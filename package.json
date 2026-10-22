@@ -1,0 +1,35 @@
+{
+  "name": "postpilot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise Multi-Brand, Multi-Platform Social Media Post Automation System",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=@postpilot/api run dev",
+    "dev:worker": "npm --workspace=@postpilot/worker run dev",
+    "dev:web": "npm --workspace=@postpilot/web run dev",
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:web\"",
+    "build": "npm --workspaces --if-present run build",
+    "test": "npm --workspaces --if-present run test",
+    "lint": "eslint . --ext .js,.jsx",
+    "format": "prettier --write \"**/*.{js,jsx,json,md,yml,yaml}\"",
+    "db:generate": "npm --workspace=@postpilot/api run db:generate",
+    "db:migrate": "npm --workspace=@postpilot/api run db:migrate",
+    "db:seed": "npm --workspace=@postpilot/api run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.4",
+    "prettier": "^3.5.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

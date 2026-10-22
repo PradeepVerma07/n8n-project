@@ -1,0 +1,159 @@
+{
+  "name": "WF-05 OAuth Token Health Check (Daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "node-trigger-daily",
+      "name": "Daily Trigger (08:00 UTC)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_URL || 'http://api:4000' }}/api/v1/social-accounts/health",
+        "method": "GET",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.POSTPILOT_API_KEY || 'pp_live_secret_n8n_scheduler_api_key_123456' }}"
+            }
+          ]
+        },
+        "sendHeaders": true
+      },
+      "id": "node-check-token-health",
+      "name": "GET /api/v1/social-accounts/health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Filter accounts that are expiring within 7 days or revoked\nconst accounts = $input.first().json.data || [];\nconst expiringOrRevoked = [];\n\nfor (const acc of accounts) {\n  if (acc.status === 'EXPIRING_SOON' || acc.status === 'EXPIRED' || acc.status === 'REVOKED') {\n    expiringOrRevoked.push({\n      json: {\n        ...acc,\n        urgency: acc.status === 'EXPIRING_SOON' ? 'WARNING' : 'CRITICAL'\n      }\n    });\n  }\n}\n\nreturn expiringOrRevoked;"
+      },
+      "id": "node-filter-expiring",
+      "name": "Filter Expiring (< 7 Days)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-expiring",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "node-has-expiring",
+      "name": "Has Tokens Needing Reconnect?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SLACK_ALERT_WEBHOOK_URL || 'https://hooks.slack.com/services/mock' }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"\u26a0\ufe0f *PostPilot Token Alert*: {{ $input.all().length }} social account(s) require re-authentication:\\n\" + {{ JSON.stringify($input.all().map(i => '\u2022 ' + i.json.platform + ' (' + i.json.accountName + '): ' + i.json.status).join('\\n')) }}\n}"
+      },
+      "id": "node-alert-slack",
+      "name": "Send Slack Alert to Brand Manager",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Trigger (08:00 UTC)": {
+      "main": [
+        [
+          {
+            "node": "GET /api/v1/social-accounts/health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /api/v1/social-accounts/health": {
+      "main": [
+        [
+          {
+            "node": "Filter Expiring (< 7 Days)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Expiring (< 7 Days)": {
+      "main": [
+        [
+          {
+            "node": "Has Tokens Needing Reconnect?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Tokens Needing Reconnect?": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert to Brand Manager",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

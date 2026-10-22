@@ -1,0 +1,171 @@
+services:
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL 16
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: postpilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postpilot
+      POSTGRES_PASSWORD: postpilot_secret
+      POSTGRES_DB: postpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postpilot -d postpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # REDIS 7
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: postpilot-redis
+    restart: unless-stopped
+    command: redis-server --requirepass redis_secret --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secret", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # MINIO (S3 Compatible Storage for Local Media)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: postpilot-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/postpilot-media || true;
+      /usr/bin/mc anonymous set download myminio/postpilot-media;
+      exit 0;
+      "
+
+  # ---------------------------------------------------------------------------
+  # N8N AUTOMATION ENGINE (Orchestration & Cron)
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: postpilot-n8n
+    restart: unless-stopped
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=postpilot
+      - DB_POSTGRESDB_USER=postpilot
+      - DB_POSTGRESDB_PASSWORD=postpilot_secret
+      - DB_POSTGRESDB_SCHEMA=n8n
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=postpilot_admin
+      - N8N_ENCRYPTION_KEY=postpilot_n8n_secure_encryption_key_32_chars
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+    ports:
+      - "5678:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - n8n-data:/home/node/.n8n
+
+  # ---------------------------------------------------------------------------
+  # POSTPILOT API
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: postpilot-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env.example
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://postpilot:postpilot_secret@postgres:5432/postpilot?schema=public
+      - REDIS_URL=redis://:redis_secret@redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_PUBLIC_URL=http://localhost:9000/postpilot-media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # POSTPILOT WORKER (BullMQ)
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: postpilot-worker
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postpilot:postpilot_secret@postgres:5432/postpilot?schema=public
+      - REDIS_URL=redis://:redis_secret@redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # POSTPILOT WEB (React + Vite)
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: postpilot-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  n8n-data:
