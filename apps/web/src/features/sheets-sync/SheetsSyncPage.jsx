@@ -40,7 +40,7 @@ export default function SheetsSyncPage() {
 
   const serviceAccountEmail = 'postpilot-sync-sa@postpilot-prod.iam.gserviceaccount.com';
 
-  const targetBrand = currentBrand || { id: 'brd-demo-apex', name: 'Apex Global Foods' };
+  const targetBrand = currentBrand || { id: 'brd-system-01', name: 'Flower plant' };
 
   useEffect(() => {
     if (targetBrand) {
@@ -297,7 +297,7 @@ export default function SheetsSyncPage() {
                 type="text"
                 value={scheduleSpreadsheetId}
                 onChange={(e) => handleSheetUrlChange(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit or ID"
+                placeholder="https://docs.google.com/spreadsheets/d/11uZJdPucIlFoZbiFJdc6GHQZHL_11MlfNFEOu7sxRIw/edit or ID"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition font-mono"
               />
               <p className="text-xs text-slate-400 mt-1">

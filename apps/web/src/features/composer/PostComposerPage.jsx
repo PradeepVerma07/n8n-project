@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import apiClient from '../../api/client.js';
 import { useBrand } from '../../context/BrandContext.jsx';
 import { PLATFORM_SPECS } from '@postpilot/shared';
 import { DateTime } from 'luxon';
-import PipelineTriggersCard from '../../components/PipelineTriggersCard.jsx';
 import {
   Send,
   Calendar,
@@ -809,8 +808,60 @@ export default function PostComposerPage() {
             </div>
           </div>
 
-          {/* Workflow Automation Triggers */}
-          <PipelineTriggersCard />
+          {/* Publishing Dispatch Summary Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <span className="font-bold text-slate-800">Dispatch Summary</span>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Ready to dispatch
+              </span>
+            </div>
+
+            <div className="space-y-2 text-slate-600">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Target Brands:</span>
+                <span className="font-semibold text-slate-800">
+                  {selectedBrandIds.length} brand{selectedBrandIds.length > 1 ? 's' : ''} selected
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Active Channels:</span>
+                <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
+                  {selectedPlatforms.map((p) => (
+                    <span key={p} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Effective Schedule:</span>
+                <span className="font-medium text-slate-700 font-mono text-[11px]">
+                  {scheduledDate} {scheduledTime} ({timezone})
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Media Attachments:</span>
+                <span className="font-semibold text-slate-800">{mediaUrls.length} file{mediaUrls.length !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <Link
+                to="/workflows"
+                className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 transition flex items-center space-x-1"
+              >
+                <span>Automations & Workflows</span>
+                <span>→</span>
+              </Link>
+              <Link
+                to="/sheets-sync"
+                className="text-[11px] font-medium text-slate-500 hover:text-slate-700 transition"
+              >
+                Google Sheets Sync
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

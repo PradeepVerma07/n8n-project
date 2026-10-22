@@ -233,6 +233,19 @@ export class GoogleSheetsService {
           const validRows = [];
           const invalidRows = [];
 
+          const FLOWER_PLANT_IMAGES = [
+            'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1463936575829-25148e1db1b8?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1509423350716-97f9360b4e09?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1470240731273-7821a6eeb6bd?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1508615039623-a25605d2b022?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1457089328109-e5d9bd499191?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1520412099551-62b6bafeb5bb?auto=format&fit=crop&w=1200&q=80',
+          ];
+
           for (let i = 0; i < records.length; i++) {
             const mapped = {
               ...records[i],
@@ -241,13 +254,24 @@ export class GoogleSheetsService {
 
             // Sanitize media_urls if placeholder text like [link removed] was passed
             if (
-              typeof mapped.media_urls === 'string' &&
-              (mapped.media_urls.includes('[link removed]') ||
-                mapped.media_urls.toLowerCase() === 'n/a' ||
-                mapped.media_urls.toLowerCase() === 'none')
+              !mapped.media_urls ||
+              typeof mapped.media_urls !== 'string' ||
+              mapped.media_urls.includes('[link removed]') ||
+              mapped.media_urls.toLowerCase() === 'n/a' ||
+              mapped.media_urls.toLowerCase() === 'none'
             ) {
-              mapped.media_urls =
-                'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=80';
+              mapped.media_urls = FLOWER_PLANT_IMAGES[i % FLOWER_PLANT_IMAGES.length];
+            }
+
+            // Sanitize link_url if placeholder text like [link removed] was passed
+            if (
+              typeof mapped.link_url === 'string' &&
+              (mapped.link_url.includes('[link removed]') ||
+                mapped.link_url.toLowerCase() === 'n/a' ||
+                mapped.link_url.toLowerCase() === 'none' ||
+                !mapped.link_url.startsWith('http'))
+            ) {
+              mapped.link_url = '';
             }
 
             rawRows.push(mapped);
