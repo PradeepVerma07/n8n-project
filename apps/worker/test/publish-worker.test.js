@@ -174,9 +174,21 @@ describe('Phase 5: Publisher Service & Worker Tests', () => {
         opts: { attempts: 5 },
       };
 
+      const mockAdapter = {
+        publish: vi.fn().mockResolvedValue({
+          platformPostId: 'fb_post_999888',
+          platformPostUrl: 'https://facebook.com/posts/fb_post_999888',
+          publishedAt: new Date(),
+        }),
+      };
+      const mockRegistry = {
+        getAdapter: vi.fn().mockReturnValue(mockAdapter),
+      };
+
       const result = await processPublishJob(job, {
         prisma: mockDb,
         redis: mockRedis,
+        adapterRegistry: mockRegistry,
         webhookDispatcher: mockDispatcher,
       });
 

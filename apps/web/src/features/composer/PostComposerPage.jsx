@@ -492,7 +492,7 @@ export default function PostComposerPage() {
             </div>
 
             {/* Platform Override Tabs */}
-            <div className="flex items-center space-x-1.5 border-b border-slate-100 pb-2 overflow-x-auto text-xs">
+            <div className="flex items-center space-x-1.5 border-b border-slate-100 pb-2 overflow-x-auto no-scrollbar text-xs">
               <button
                 type="button"
                 onClick={() => setActiveTabPlatform('ALL')}

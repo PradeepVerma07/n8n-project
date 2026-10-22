@@ -172,18 +172,35 @@ export async function processPublishJob(job, dependencies = {}) {
     const isFinalFailure = attempts >= maxAttempts;
 
     // Update PostPlatform error metrics
-    await db.postPlatform.updateMany({
-      where: {
-        postId,
-        platform,
-      },
-      data: {
-        attempts,
-        errorMessage: err.message,
-        errorCode: err.code || 'PLATFORM_ERROR',
-        status: isFinalFailure ? 'FAILED' : 'PENDING',
-      },
-    });
+    if (typeof db.postPlatform?.updateMany === 'function') {
+      await db.postPlatform.updateMany({
+        where: {
+          postId,
+          platform,
+        },
+        data: {
+          attempts,
+          errorMessage: err.message,
+          errorCode: err.code || 'PLATFORM_ERROR',
+          status: isFinalFailure ? 'FAILED' : 'PENDING',
+        },
+      });
+    } else if (typeof db.postPlatform?.update === 'function') {
+      await db.postPlatform.update({
+        where: {
+          postId_platform: {
+            postId,
+            platform,
+          },
+        },
+        data: {
+          attempts,
+          errorMessage: err.message,
+          errorCode: err.code || 'PLATFORM_ERROR',
+          status: isFinalFailure ? 'FAILED' : 'PENDING',
+        },
+      }).catch(() => {});
+    }
 
     if (isFinalFailure) {
       await db.publishJob.updateMany({

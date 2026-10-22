@@ -9,6 +9,7 @@ import {
   verifyWebhookSignature,
 } from '@postpilot/shared';
 import { env } from '../../config/env.js';
+import { metaPublisherService } from './meta-publisher.service.js';
 
 let isSchedulerPausedState = false;
 let lastSchedulerRunTime = null;
@@ -276,6 +277,15 @@ export const publishService = {
               });
             } catch (jobErr) {
               isDbConnectionError(jobErr);
+            }
+          }
+
+          // Live dispatch to Meta (Facebook & Instagram)
+          if (isNow || process.env.PUBLISH_MODE === 'live') {
+            if (platform === 'FACEBOOK' || platform === 'INSTAGRAM') {
+              metaPublisherService.publish(brand, post, platform).catch((dispatchErr) => {
+                console.warn(`[MetaPublisher] Background dispatch warning for ${platform}: ${dispatchErr.message}`);
+              });
             }
           }
 

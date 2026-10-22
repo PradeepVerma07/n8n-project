@@ -415,7 +415,7 @@ export default function WorkflowsPage() {
       </div>
 
       {/* Workflow Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3 overflow-x-auto text-xs font-bold">
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3 overflow-x-auto no-scrollbar text-xs font-bold">
         {WORKFLOWS_DATA.map((wf) => (
           <button
             key={wf.id}

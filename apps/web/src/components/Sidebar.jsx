@@ -131,7 +131,7 @@ export default function Sidebar({ mobileOpen = false, setMobileOpen = () => {} }
         </div>
 
         {/* Grouped Navigation Links */}
-        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto no-scrollbar">
           {NAVIGATION_GROUPS.map((group) => {
             const filteredItems = group.items.filter((item) =>
               item.minRoles.includes(currentRole)
