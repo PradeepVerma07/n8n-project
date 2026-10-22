@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
+import { SEED_DEMO_POSTS } from './seed-demo-posts.js';
 
-const inMemoryPosts = [];
+const inMemoryPosts = [...SEED_DEMO_POSTS];
 
 let isOfflineMode = false;
 
