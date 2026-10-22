@@ -23,13 +23,13 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.API_URL || 'http://api:4000' }}/api/v1/social-accounts/health",
+        "url": "http://localhost:4000/api/v1/social-accounts/health",
         "method": "GET",
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.POSTPILOT_API_KEY || 'pp_live_secret_n8n_scheduler_api_key_123456' }}"
+              "value": "pp_live_secret_n8n_scheduler_api_key_123456"
             }
           ]
         },
@@ -90,7 +90,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.SLACK_ALERT_WEBHOOK_URL || 'https://hooks.slack.com/services/mock' }}",
+        "url": "https://hooks.slack.com/services/mock",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
