@@ -30,12 +30,14 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useBrand } from '../../context/BrandContext.jsx';
+import { useToast } from '../../components/Toast.jsx';
 import api from '../../api/client.js';
 
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 export default function ReportsPage() {
   const { currentBrand } = useBrand();
+  const { addToast } = useToast();
 
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function ReportsPage() {
       link.click();
       link.remove();
     } catch (err) {
-      alert(err.response?.data?.message || 'CSV export failed.');
+      addToast(err.response?.data?.message || 'CSV export failed.', 'error');
     } finally {
       setExporting(false);
     }
@@ -134,7 +136,7 @@ export default function ReportsPage() {
       link.click();
       link.remove();
     } catch (err) {
-      alert(err.response?.data?.message || 'Excel export failed.');
+      addToast(err.response?.data?.message || 'Excel export failed.', 'error');
     } finally {
       setExporting(false);
     }

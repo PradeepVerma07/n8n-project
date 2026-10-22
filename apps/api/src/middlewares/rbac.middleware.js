@@ -1,4 +1,4 @@
-import { ROLES, ROLE_HIERARCHY } from '@postpilot/shared';
+import { ROLES, ROLE_HIERARCHY, hasPermission } from '@postpilot/shared';
 import { AppError } from './error.middleware.js';
 
 /**
@@ -29,6 +29,36 @@ export function requireRoles(...allowedRoles) {
           `Access denied. Requires one of roles: [${allowedRoles.join(', ')}]. Current role: ${req.user.role}`,
           403,
           'FORBIDDEN_INSUFFICIENT_ROLE'
+        )
+      );
+    }
+
+    next();
+  };
+}
+
+/**
+ * Ensures user has a specific granular permission.
+ *
+ * @param {string} permission
+ * @returns {import('express').RequestHandler}
+ */
+export function requirePermission(permission) {
+  return (req, res, next) => {
+    if (req.isServiceAccount) {
+      return next();
+    }
+
+    if (!req.user || !req.user.role) {
+      return next(new AppError('No organization membership active', 403, 'FORBIDDEN_NO_ROLE'));
+    }
+
+    if (!hasPermission(req.user.role, permission)) {
+      return next(
+        new AppError(
+          `Access denied. Missing required permission: ${permission}`,
+          403,
+          'FORBIDDEN_PERMISSION_DENIED'
         )
       );
     }

@@ -92,6 +92,8 @@ router.post('/refresh', validate(refreshTokenSchema), authController.refresh);
  *         description: Logged out
  */
 router.post('/logout', authController.logout);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
 /**
  * @swagger

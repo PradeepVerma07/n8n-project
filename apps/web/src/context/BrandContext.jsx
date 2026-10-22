@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/client.js';
 import { useAuth } from './AuthContext.jsx';
 
@@ -10,47 +10,53 @@ export function BrandProvider({ children }) {
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const getStorageKey = useCallback(() => {
+    const orgId = activeOrg?.orgId || activeOrg?.id || 'default';
+    return `postpilot_active_brand_${orgId}`;
+  }, [activeOrg]);
+
+  const fetchBrands = useCallback(async () => {
+    if (!isAuthenticated || !activeOrg) {
+      setBrands([]);
+      setSelectedBrand(null);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data } = await apiClient.get('/brands');
+      const brandList = data.data || [];
+      setBrands(brandList);
+
+      const savedBrandId = localStorage.getItem(getStorageKey());
+      const active = brandList.find((b) => b.id === savedBrandId) || brandList[0] || null;
+
+      setSelectedBrand(active);
+      if (active) {
+        localStorage.setItem(getStorageKey(), active.id);
+      }
+    } catch (err) {
+      console.warn('Failed to load brands from API:', err.message);
+      setBrands([]);
+      setSelectedBrand(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, activeOrg, getStorageKey]);
+
   useEffect(() => {
-    async function fetchBrands() {
-      if (!isAuthenticated || !activeOrg) {
-        setBrands([]);
-        setSelectedBrand(null);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const { data } = await apiClient.get('/brands');
-        const brandList = data.data || [];
-        setBrands(brandList);
-
-        const savedBrandId = localStorage.getItem('postpilot_active_brand_id');
-        const active = brandList.find((b) => b.id === savedBrandId) || brandList[0] || null;
-
-        setSelectedBrand(active);
-        if (active) {
-          localStorage.setItem('postpilot_active_brand_id', active.id);
-        }
-      } catch (err) {
-        console.warn('Failed to load brands from API:', err.message);
-        setBrands([]);
-        setSelectedBrand(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchBrands();
-  }, [isAuthenticated, activeOrg]);
+  }, [fetchBrands]);
 
-  const selectBrand = (brand) => {
+  const selectBrand = useCallback((brand) => {
     setSelectedBrand(brand);
+    const key = getStorageKey();
     if (brand) {
-      localStorage.setItem('postpilot_active_brand_id', brand.id);
+      localStorage.setItem(key, brand.id);
     } else {
-      localStorage.removeItem('postpilot_active_brand_id');
+      localStorage.removeItem(key);
     }
-  };
+  }, [getStorageKey]);
 
   const reloadBrands = async () => {
     try {
@@ -98,11 +104,11 @@ export function BrandProvider({ children }) {
         selectedBrand,
         currentBrand: selectedBrand,
         selectBrand,
+        reloadBrands,
         createBrand,
         updateBrand,
         deleteBrand,
         loading,
-        reloadBrands,
       }}
     >
       {children}

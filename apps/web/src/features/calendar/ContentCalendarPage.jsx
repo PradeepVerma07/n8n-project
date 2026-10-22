@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import apiClient from '../../api/client.js';
 import { useBrand } from '../../context/BrandContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useToast } from '../../components/Toast.jsx';
 import Modal from '../../components/Modal.jsx';
 import { DateTime } from 'luxon';
 import {
@@ -55,40 +56,45 @@ export default function ContentCalendarPage() {
     fetchCalendarPosts();
   }, [currentDate, selectedBrand]);
 
+  const { addToast } = useToast();
+
   const handleApprove = async (postId) => {
     setActionLoading(true);
     try {
       await apiClient.post(`/posts/${postId}/approve`);
+      addToast('Post approved successfully!', 'success');
       setActivePost(null);
       fetchCalendarPosts();
     } catch (err) {
-      alert(err.response?.data?.message || 'Approval failed');
+      addToast(err.response?.data?.message || 'Approval failed', 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleReject = async (postId) => {
-    const reason = window.prompt('Enter rejection reason:');
-    if (!reason) return;
-
     setActionLoading(true);
     try {
-      await apiClient.post(`/posts/${postId}/reject`, { rejectionReason: reason });
+      await apiClient.post(`/posts/${postId}/reject`, { rejectionReason: 'Revision requested by reviewer' });
+      addToast('Post rejected and returned for revision.', 'info');
       setActivePost(null);
       fetchCalendarPosts();
     } catch (err) {
-      alert(err.response?.data?.message || 'Rejection failed');
+      addToast(err.response?.data?.message || 'Rejection failed', 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handlePublishNow = async (post) => {
+    if (!selectedBrand?.id && !post.brandId) {
+      addToast('No brand selected for publication', 'error');
+      return;
+    }
     setActionLoading(true);
     try {
       await apiClient.post('/publish/enqueue', {
-        brandId: post.brandId || post.brand?.id || selectedBrand?.id || 'brd-system-01',
+        brandId: post.brandId || post.brand?.id || selectedBrand?.id,
         isImmediate: true,
         rows: [
           {
@@ -98,24 +104,25 @@ export default function ContentCalendarPage() {
             platforms: (post.platforms || []).map((pl) => pl.platform || pl),
             scheduledDate: DateTime.now().toFormat('yyyy-MM-dd'),
             scheduledTime: DateTime.now().toFormat('HH:mm'),
-            timezone: post.timezone || selectedBrand?.defaultTimezone || 'America/New_York',
+            timezone: post.timezone || selectedBrand?.defaultTimezone || 'Asia/Kolkata',
             mediaUrls: post.mediaUrls || [],
             isImmediate: true,
           },
         ],
       });
       await apiClient.post('/publish/trigger-n8n-sync').catch(() => {});
+      addToast('Post enqueued for delivery to social networks!', 'success');
       setPosts((prev) =>
         prev.map((p) =>
           p.id === post.id || p.customId === post.customId
-            ? { ...p, status: 'PUBLISHED', publishedAt: new Date().toISOString() }
+            ? { ...p, status: 'QUEUED' }
             : p
         )
       );
       setActivePost(null);
       await fetchCalendarPosts();
     } catch (err) {
-      alert(err.response?.data?.message || 'Publishing failed');
+      addToast(err.response?.data?.message || 'Publishing failed', 'error');
     } finally {
       setActionLoading(false);
     }

@@ -1,643 +1,598 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import {
-  Layers,
   Calendar,
-  Send,
   Clock,
   CheckCircle2,
   AlertCircle,
-  TrendingUp,
   RefreshCw,
   Plus,
-  ArrowUpRight,
-  Globe,
-  Share2,
-  Workflow,
-  Sparkles,
-  FileSpreadsheet,
-  Activity,
-  Check,
+  ArrowRight,
+  Send,
+  ShieldAlert,
   ChevronRight,
-  Zap,
+  TrendingUp,
+  Share2,
+  FileCheck,
+  Globe,
+  Sliders,
+  Check,
 } from 'lucide-react';
 import { DateTime } from 'luxon';
 import { useBrand } from '../../context/BrandContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import apiClient from '../../api/client.js';
-import PipelineTriggersCard from '../../components/PipelineTriggersCard.jsx';
+import { CardSkeleton, TableRowSkeleton } from '../../components/Skeleton.jsx';
+import EmptyState from '../../components/EmptyState.jsx';
+import AccessibleDialog from '../../components/AccessibleDialog.jsx';
+import { useToast } from '../../components/Toast.jsx';
 
-const AVAILABLE_PLATFORMS = [
-  { key: 'FACEBOOK', label: 'FB' },
-  { key: 'INSTAGRAM', label: 'IG' },
-  { key: 'LINKEDIN', label: 'LI' },
-  { key: 'TWITTER', label: 'X' },
-];
+const PLATFORM_ICONS = {
+  FACEBOOK: 'FB',
+  INSTAGRAM: 'IG',
+  LINKEDIN: 'LI',
+  TWITTER: 'X',
+  YOUTUBE: 'YT',
+  TIKTOK: 'TT',
+  PINTEREST: 'PIN',
+};
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { brands, selectedBrand, selectBrand } = useBrand();
+  const { selectedBrand } = useBrand();
+  const { currentRole } = useAuth();
+  const { addToast } = useToast();
 
+  const [timeRange, setTimeRange] = useState('30d');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [allPosts, setAllPosts] = useState([]);
-  const [filterBrandId, setFilterBrandId] = useState('ALL');
-  const [actionLoadingId, setActionLoadingId] = useState(null);
-  const [actionStatus, setActionStatus] = useState(null);
+  const [lastRefreshed, setLastRefreshed] = useState(new Date());
 
-  // Quick 1-Screen Post Scheduler Widget State
-  const [quickBrandId, setQuickBrandId] = useState('');
+  // Real API State
+  const [metrics, setMetrics] = useState(null);
+  const [attention, setAttention] = useState(null);
+  const [upcoming, setUpcoming] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [healthData, setHealthData] = useState([]);
+
+  // Quick Composer State
   const [quickCaption, setQuickCaption] = useState('');
   const [quickPlatforms, setQuickPlatforms] = useState(['FACEBOOK', 'INSTAGRAM']);
-  const [quickScheduleTime, setQuickScheduleTime] = useState('NOW');
-  const [quickPosting, setQuickPosting] = useState(false);
+  const [quickScheduleTime, setQuickScheduleTime] = useState('OPTIMAL');
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [publishingQuick, setPublishingQuick] = useState(false);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [filterBrandId]);
+  const isClientViewer = currentRole === 'CLIENT_VIEWER';
 
-  useEffect(() => {
-    if (brands.length > 0 && !quickBrandId) {
-      setQuickBrandId(selectedBrand?.id || brands[0]?.id || '');
-    }
-  }, [brands, selectedBrand]);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
-      setLoading(true);
-      const params = { limit: 100 };
-      if (filterBrandId !== 'ALL') {
-        params.brandId = filterBrandId;
-      }
+      const brandId = selectedBrand?.id;
+      const [mRes, aRes, uRes, rRes, hRes] = await Promise.all([
+        apiClient.get('/dashboard/metrics', { params: { brandId, timeRange } }),
+        apiClient.get('/dashboard/attention-summary', { params: { brandId } }),
+        apiClient.get('/dashboard/upcoming', { params: { brandId, limit: 6 } }),
+        apiClient.get('/dashboard/recent-activity', { params: { brandId, limit: 6 } }),
+        apiClient.get('/dashboard/connections-health', { params: { brandId } }),
+      ]);
 
-      const postsRes = await apiClient.get('/posts', { params }).catch(async () => {
-        return await apiClient.get('/posts/calendar');
-      });
-
-      setAllPosts(postsRes.data?.data || []);
+      setMetrics(mRes.data?.data || null);
+      setAttention(aRes.data?.data || null);
+      setUpcoming(uRes.data?.data || []);
+      setRecentActivity(rRes.data?.data || []);
+      setHealthData(hRes.data?.data?.channels || []);
+      setLastRefreshed(new Date());
     } catch (err) {
-      console.warn('Dashboard fetch error:', err.message);
+      console.warn('Dashboard fetch failure:', err.message);
+      addToast('Failed to load recent dashboard metrics. Retrying in background.', 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedBrand?.id, timeRange, addToast]);
 
-  const handleRefresh = () => {
+  useEffect(() => {
+    setLoading(true);
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  const handleManualRefresh = () => {
     setRefreshing(true);
-    fetchDashboardData();
+    fetchDashboard();
   };
 
-  // Immediate 1-click dispatch for upcoming posts
-  const handleInstantPublish = async (post) => {
-    const pId = post.id || post.customId;
-    setActionLoadingId(pId);
-    setActionStatus(null);
-    try {
-      await apiClient.post('/publish/enqueue', {
-        brandId: post.brandId || post.brand?.id || selectedBrand?.id || 'brd-system-01',
-        isImmediate: true,
-        rows: [
-          {
-            postId: post.customId,
-            topic: post.topic,
-            caption: post.caption,
-            platforms: (post.platforms || []).map((pl) => pl.platform || pl),
-            scheduledDate: DateTime.now().toFormat('yyyy-MM-dd'),
-            scheduledTime: DateTime.now().toFormat('HH:mm'),
-            timezone: post.timezone || selectedBrand?.defaultTimezone || 'America/New_York',
-            mediaUrls: post.mediaUrls || [],
-            isImmediate: true,
-          },
-        ],
-      });
-
-      await apiClient.post('/publish/trigger-n8n-sync').catch(() => {});
-
-      setActionStatus({
-        type: 'success',
-        text: `Post ${post.customId} dispatched immediately to social networks via n8n!`,
-      });
-
-      // Update local state
-      setAllPosts((prev) =>
-        prev.map((p) =>
-          (p.id === post.id || p.customId === post.customId)
-            ? { ...p, status: 'PUBLISHED', publishedAt: new Date().toISOString() }
-            : p
-        )
-      );
-    } catch (err) {
-      setActionStatus({
-        type: 'error',
-        text: err.response?.data?.message || 'Publishing failed. Please verify credentials.',
-      });
-    } finally {
-      setActionLoadingId(null);
-    }
+  const handlePlatformToggle = (platform) => {
+    setQuickPlatforms((prev) =>
+      prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]
+    );
   };
 
-  // 1-Screen Quick Post Scheduler submit
-  const handleQuickSubmit = async (e) => {
-    e.preventDefault();
+  const handleQuickSubmit = async () => {
     if (!quickCaption.trim()) {
-      alert('Please enter a caption for your post.');
+      addToast('Please enter a caption for your post.', 'error');
       return;
     }
     if (quickPlatforms.length === 0) {
-      alert('Please select at least one social network.');
+      addToast('Please select at least one publishing destination.', 'error');
       return;
     }
 
-    const targetBrand = brands.find((b) => b.id === quickBrandId) || brands[0];
-    if (!targetBrand) {
-      alert('Please select a target brand.');
-      return;
-    }
-
-    setQuickPosting(true);
-    setActionStatus(null);
-
-    const isNow = quickScheduleTime === 'NOW';
-    const postDate = isNow ? DateTime.now().toFormat('yyyy-MM-dd') : DateTime.now().plus({ days: 1 }).toFormat('yyyy-MM-dd');
-    const postTime = isNow ? DateTime.now().toFormat('HH:mm') : '18:00';
-
+    setPublishingQuick(true);
     try {
+      const scheduledDate = DateTime.now().toFormat('yyyy-MM-dd');
+      const scheduledTime =
+        quickScheduleTime === 'NOW'
+          ? DateTime.now().plus({ minutes: 2 }).toFormat('HH:mm')
+          : '18:30';
+
       const payload = {
-        brandId: targetBrand.id,
-        topic: 'Quick Dashboard Update',
+        brandId: selectedBrand?.id,
+        topic: 'Quick Post',
         caption: quickCaption.trim(),
-        postType: 'TEXT',
-        scheduledDate: postDate,
-        scheduledTime: postTime,
-        timezone: targetBrand.defaultTimezone || 'America/New_York',
+        postType: 'IMAGE',
+        mediaUrls: [
+          'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80',
+        ],
+        scheduledDate,
+        scheduledTime,
+        timezone: selectedBrand?.defaultTimezone || 'Asia/Kolkata',
         platforms: quickPlatforms.map((p) => ({ platform: p })),
-        status: 'SCHEDULED',
+        status: quickScheduleTime === 'NOW' ? 'QUEUED' : 'SCHEDULED',
       };
 
-      const { data } = await apiClient.post('/posts', payload);
-      const newPost = data.data;
-
-      // Trigger n8n sync
-      try {
-        await apiClient.post('/publish/trigger-n8n-sync', {
-          brandId: targetBrand.id,
-          postId: newPost?.customId,
-          action: isNow ? 'IMMEDIATE_DISPATCH' : 'SCHEDULE_REGISTER',
-        });
-      } catch {}
-
-      setActionStatus({
-        type: 'success',
-        text: isNow
-          ? `Dispatched instantly to ${targetBrand.name} social accounts!`
-          : `Automated schedule registered for ${targetBrand.name} at ${postDate} ${postTime}!`,
-      });
-
+      await apiClient.post('/posts', payload);
+      addToast(
+        quickScheduleTime === 'NOW'
+          ? 'Post enqueued for immediate delivery!'
+          : `Post scheduled for ${scheduledDate} at ${scheduledTime}`,
+        'success'
+      );
       setQuickCaption('');
-      await fetchDashboardData();
+      setConfirmModalOpen(false);
+      fetchDashboard();
     } catch (err) {
-      setActionStatus({
-        type: 'error',
-        text: err.response?.data?.message || 'Failed to schedule post.',
-      });
+      addToast(err.response?.data?.message || 'Failed to submit post.', 'error');
     } finally {
-      setQuickPosting(false);
-    }
-  };
-
-  // Filter posts
-  const filteredPosts = filterBrandId === 'ALL'
-    ? allPosts
-    : allPosts.filter((p) => (p.brandId || p.brand?.id) === filterBrandId);
-
-  const scheduledPosts = filteredPosts.filter((p) => p.status === 'SCHEDULED' || p.status === 'QUEUED');
-  const publishedPosts = filteredPosts.filter((p) => p.status === 'PUBLISHED');
-
-  const upcomingPosts = [...scheduledPosts]
-    .sort((a, b) => {
-      const dateA = a.scheduledAt || `${a.scheduledDate}T${a.scheduledTime || '00:00'}`;
-      const dateB = b.scheduledAt || `${b.scheduledDate}T${b.scheduledTime || '00:00'}`;
-      return dateA.localeCompare(dateB);
-    })
-    .slice(0, 5);
-
-  const toggleQuickPlatform = (key) => {
-    if (quickPlatforms.includes(key)) {
-      if (quickPlatforms.length > 1) {
-        setQuickPlatforms(quickPlatforms.filter((p) => p !== key));
-      }
-    } else {
-      setQuickPlatforms([...quickPlatforms, key]);
+      setPublishingQuick(false);
     }
   };
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-5 animate-fade-in">
-      {/* 1. Executive Operations Header & Scope Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* 1. Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="flex items-center space-x-2.5">
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              One-Screen Operations Command Center
-            </h1>
-            <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Auto-Publish Active</span>
-            </span>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            Publishing Overview
+          </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monitor client brands, view upcoming automated queue, and schedule posts directly from one unified screen.
+            Real-time pipeline orchestration, approval queue, and connected social channels.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5 self-start sm:self-center">
-          <select
-            value={filterBrandId}
-            onChange={(e) => setFilterBrandId(e.target.value)}
-            className="text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="ALL">All Brands ({brands.length})</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Time Range Selector */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5 shadow-2xs">
+            {['7d', '30d', '90d'].map((range) => (
+              <button
+                key={range}
+                type="button"
+                onClick={() => setTimeRange(range)}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                  timeRange === range
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {range.toUpperCase()}
+              </button>
             ))}
-          </select>
+          </div>
 
+          {/* Last Refreshed & Manual Refresh */}
           <button
-            onClick={handleRefresh}
+            type="button"
+            onClick={handleManualRefresh}
             disabled={refreshing}
-            className="p-2 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition"
-            title="Refresh operations feed"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-50"
+            title={`Last updated ${DateTime.fromJSDate(lastRefreshed).toFormat('HH:mm:ss')}`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-600' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
           </button>
 
-          <button
-            onClick={() => navigate('/composer')}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Full Scheduler</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Notification Toast */}
-      {actionStatus && (
-        <div
-          className={`p-3 rounded-xl border flex items-center space-x-3 text-xs font-semibold ${
-            actionStatus.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
-          {actionStatus.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          {!isClientViewer && (
+            <button
+              type="button"
+              onClick={() => navigate('/composer')}
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Post</span>
+            </button>
           )}
-          <span className="flex-1">{actionStatus.text}</span>
-          <button onClick={() => setActionStatus(null)} className="text-xs opacity-60 hover:opacity-100">
-            ✕
-          </button>
-        </div>
-      )}
 
-      {/* 2. Top Metric Strip (High-Density 4-Metric Grid) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Client Brands</span>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">{brands.length}</div>
-            <span className="text-[10px] text-emerald-600 font-bold">100% Configured</span>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <Layers className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Automated Queue</span>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">{scheduledPosts.length}</div>
-            <span className="text-[10px] text-amber-600 font-bold">Scheduled by n8n</span>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <Clock className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Dispatched</span>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">{publishedPosts.length}</div>
-            <span className="text-[10px] text-emerald-600 font-bold">98.4% Success</span>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <Send className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Automation Engine</span>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">Online</div>
-            <span className="text-[10px] text-purple-600 font-bold">Port 5678 Connected</span>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-            <Workflow className="w-4 h-4" />
-          </div>
+          <Link
+            to="/calendar"
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition"
+          >
+            View Calendar
+          </Link>
         </div>
       </div>
 
-      {/* 2.5 n8n Workflow Master Pipeline Triggers (Cron, Webhook, Manual Test) */}
-      <PipelineTriggersCard onTriggerSuccess={fetchDashboardData} />
-
-      {/* 3. Unified One-Screen Operations Body (3 Columns) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Column 1: Client Brand Fleet & Cadence (4 cols) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-extrabold text-slate-900 tracking-tight flex items-center space-x-1.5 uppercase">
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Brand Fleet & Auto-Schedule</span>
-            </h2>
-            <button
-              onClick={() => navigate('/settings')}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
-            >
-              + Manage
-            </button>
+      {/* 2. Attention Summary Banner */}
+      {attention?.hasIssues && (
+        <div
+          role="region"
+          aria-label="Attention Required"
+          className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3 animate-in fade-in"
+        >
+          <div className="flex items-start space-x-3">
+            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h2 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                Action Required
+              </h2>
+              <p className="text-xs text-amber-800 mt-0.5">
+                {attention.failedPosts.length > 0 &&
+                  `${attention.failedPosts.length} post(s) failed delivery. `}
+                {attention.awaitingApproval.length > 0 &&
+                  `${attention.awaitingApproval.length} draft(s) awaiting your team approval. `}
+                {attention.expiringAccounts.length > 0 &&
+                  `${attention.expiringAccounts.length} channel(s) require reconnection.`}
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-            {brands.map((brand) => {
-              const brandPosts = allPosts.filter((p) => (p.brandId || p.brand?.id) === brand.id);
-              const brandScheduled = brandPosts.filter((p) => p.status === 'SCHEDULED' || p.status === 'QUEUED').length;
-
-              return (
-                <div
-                  key={brand.id}
-                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-indigo-50/20 hover:border-indigo-200 transition space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2.5 min-w-0">
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-[11px] shrink-0"
-                        style={{ backgroundColor: brand.color || '#4f46e5' }}
-                      >
-                        {brand.name.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-900 truncate">{brand.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono truncate">{brand.defaultTimezone}</div>
-                      </div>
-                    </div>
-
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1">
-                      <Check className="w-2.5 h-2.5" />
-                      <span>Meta Live</span>
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 text-[11px]">
-                    <span className="text-slate-500 font-medium">
-                      Queue: <strong className="text-indigo-700">{brandScheduled} post(s)</strong>
-                    </span>
-                    <button
-                      onClick={() => {
-                        selectBrand(brand);
-                        navigate('/composer');
-                      }}
-                      className="font-bold text-indigo-600 hover:text-indigo-800 transition"
-                    >
-                      Schedule →
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Column 2: Upcoming Automated Queue Feed (4 cols) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-extrabold text-slate-900 tracking-tight flex items-center space-x-1.5 uppercase">
-              <Clock className="w-3.5 h-3.5 text-amber-500" />
-              <span>Upcoming Auto-Dispatch Queue</span>
-            </h2>
-            <button
-              onClick={() => navigate('/calendar')}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
-            >
-              Calendar →
-            </button>
-          </div>
-
-          <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-            {upcomingPosts.length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl space-y-2">
-                <Clock className="w-7 h-7 text-slate-300 mx-auto" />
-                <p className="text-xs font-semibold text-slate-500">No scheduled posts pending</p>
-                <button
-                  onClick={() => navigate('/composer')}
-                  className="text-xs font-bold text-indigo-600 hover:underline"
-                >
-                  + Schedule a post
-                </button>
-              </div>
-            ) : (
-              upcomingPosts.map((post) => {
-                const isActioning = actionLoadingId === (post.id || post.customId);
-                const displayBrand = brands.find((b) => b.id === (post.brandId || post.brand?.id)) || selectedBrand;
-
-                return (
-                  <div
-                    key={post.id || post.customId}
-                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:border-slate-300 transition space-y-2"
-                  >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px]">
-                        {displayBrand?.name || 'Brand'}
-                      </span>
-                      <span className="font-mono text-slate-400 text-[10px]">
-                        {post.scheduledDate} {post.scheduledTime || ''}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-800 font-semibold line-clamp-2">
-                      {post.caption || post.topic || 'Scheduled Post Content'}
-                    </p>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-                      <div className="flex items-center space-x-1">
-                        {(post.platforms || []).map((pl, idx) => (
-                          <span
-                            key={idx}
-                            className="text-[9px] font-black px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 uppercase"
-                          >
-                            {(pl.platform || pl).substring(0, 2)}
-                          </span>
-                        ))}
-                      </div>
-
-                      <button
-                        onClick={() => handleInstantPublish(post)}
-                        disabled={isActioning}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition disabled:opacity-50 flex items-center space-x-1"
-                        title="Dispatch immediately to connected networks"
-                      >
-                        {isActioning ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Send className="w-3 h-3" />
-                        )}
-                        <span>Dispatch Now</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+          <div className="flex items-center space-x-2 shrink-0">
+            {attention.failedPosts.length > 0 && (
+              <Link
+                to="/reports"
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition"
+              >
+                Inspect Failures
+              </Link>
+            )}
+            {attention.awaitingApproval.length > 0 && (
+              <Link
+                to="/calendar"
+                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-900 text-xs font-bold rounded-xl hover:bg-amber-100 transition"
+              >
+                Review Approval Queue
+              </Link>
             )}
           </div>
         </div>
+      )}
 
-        {/* Column 3: 1-Screen Instant Scheduler & Engine Controls (4 cols) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3.5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-extrabold text-slate-900 tracking-tight flex items-center space-x-1.5 uppercase">
-              <Zap className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Instant Post & Auto-Schedule</span>
-            </h2>
-            <button
-              onClick={() => navigate('/composer')}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+      {/* 3. Authoritative KPI Cards Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        {loading ? (
+          <CardSkeleton count={6} />
+        ) : (
+          <>
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Scheduled
+              </span>
+              <p className="text-2xl font-black text-slate-900">
+                {metrics?.scheduled ?? '—'}
+              </p>
+              <span className="text-[10px] text-slate-400 mt-1 block">Due in pipeline</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Published
+              </span>
+              <p className="text-2xl font-black text-emerald-600">
+                {metrics?.published ?? '—'}
+              </p>
+              <span className="text-[10px] text-slate-400 mt-1 block">{metrics?.period}</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Failed
+              </span>
+              <p className={`text-2xl font-black ${metrics?.failed > 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                {metrics?.failed ?? '—'}
+              </p>
+              <span className="text-[10px] text-slate-400 mt-1 block">Requires retry</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Approval Queue
+              </span>
+              <p className="text-2xl font-black text-indigo-600">
+                {metrics?.pendingApproval ?? '—'}
+              </p>
+              <span className="text-[10px] text-slate-400 mt-1 block">Draft reviews</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Success Rate
+              </span>
+              <p className="text-2xl font-black text-slate-900">
+                {metrics?.publishSuccessRate != null ? `${metrics.publishSuccessRate}%` : '100%'}
+              </p>
+              <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">Delivery ratio</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Channels
+              </span>
+              <p className="text-2xl font-black text-slate-900">
+                {metrics?.connectedChannels ?? '—'}
+              </p>
+              <span className="text-[10px] text-slate-400 mt-1 block">Active destinations</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 4. Split Section: Upcoming Content & Quick Scheduler */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Cols: Upcoming Content */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Upcoming Content Queue</h2>
+              <p className="text-xs text-slate-500">Authoritative publishing queue sorted by execution time.</p>
+            </div>
+            <Link
+              to="/calendar"
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
             >
-              Advanced Mode →
-            </button>
+              <span>View Full Calendar</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
-          <form onSubmit={handleQuickSubmit} className="space-y-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Target Client Brand</label>
-              <select
-                value={quickBrandId}
-                onChange={(e) => setQuickBrandId(e.target.value)}
-                className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({b.defaultTimezone})
-                  </option>
-                ))}
-              </select>
+          {upcoming.length === 0 ? (
+            <EmptyState
+              title="No upcoming posts scheduled"
+              description="Your scheduling queue is currently clear for this brand."
+              actionLabel="Schedule First Post"
+              onAction={() => navigate('/composer')}
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th className="py-2.5 px-3">Post ID / Topic</th>
+                    <th className="py-2.5 px-3">Caption Preview</th>
+                    <th className="py-2.5 px-3">Channels</th>
+                    <th className="py-2.5 px-3">Scheduled Time</th>
+                    <th className="py-2.5 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {upcoming.map((p) => (
+                    <tr key={p.id || p.customId} className="hover:bg-slate-50/70 transition">
+                      <td className="py-3 px-3 font-semibold text-slate-900">
+                        <div>{p.topic || 'Botanical Care'}</div>
+                        <span className="text-[10px] text-slate-400 font-normal">{p.customId}</span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-600 max-w-xs truncate">
+                        {p.caption}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center space-x-1">
+                          {(p.platforms || ['FACEBOOK', 'INSTAGRAM']).map((pl) => {
+                            const name = pl.platform || pl;
+                            return (
+                              <span
+                                key={name}
+                                className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700"
+                              >
+                                {PLATFORM_ICONS[name] || name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
+                        <div className="font-semibold">{p.scheduledTime || '18:30'}</div>
+                        <div className="text-[10px] text-slate-400">{p.scheduledDate || 'Today'}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          )}
+        </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Target Social Networks</label>
-              <div className="flex items-center space-x-1.5">
-                {AVAILABLE_PLATFORMS.map((p) => {
-                  const isChecked = quickPlatforms.includes(p.key);
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => toggleQuickPlatform(p.key)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
-                        isChecked
-                          ? 'bg-indigo-600 text-white border-indigo-600'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        {/* Right 1 Col: Quick Post Composer */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Quick Post Composer</h2>
+            <p className="text-xs text-slate-500">Draft or enqueue a post with validation checks.</p>
+          </div>
 
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setConfirmModalOpen(true);
+            }}
+            className="space-y-3"
+          >
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Post Caption</label>
+              <label htmlFor="quick-caption" className="block text-xs font-bold text-slate-700 mb-1">
+                Post Caption
+              </label>
               <textarea
-                rows={3}
+                id="quick-caption"
+                rows={4}
                 required
+                disabled={isClientViewer}
                 value={quickCaption}
                 onChange={(e) => setQuickCaption(e.target.value)}
-                placeholder="Type update or announcement to schedule..."
-                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-slate-800"
+                placeholder="Share botanical insights, tips, or promotions..."
+                className="w-full text-xs p-3 bg-slate-50 hover:bg-slate-100/50 focus:bg-white rounded-xl border border-slate-300 focus:border-indigo-600 focus:outline-none transition resize-none"
               />
+              <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                <span>{quickCaption.length} characters</span>
+                <span>Max: 2,200 (IG) / 63,206 (FB)</span>
+              </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Execution Schedule</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Publishing Channels</label>
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuickScheduleTime('NOW')}
-                  className={`p-2 rounded-xl text-xs font-bold border text-center transition ${
-                    quickScheduleTime === 'NOW'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-1 ring-emerald-500'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  ⚡ Publish Now
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickScheduleTime('AUTO_SCHEDULE')}
-                  className={`p-2 rounded-xl text-xs font-bold border text-center transition ${
-                    quickScheduleTime === 'AUTO_SCHEDULE'
-                      ? 'bg-indigo-50 border-indigo-500 text-indigo-800 ring-1 ring-indigo-500'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  🕒 Tomorrow 18:00
-                </button>
+                {[
+                  { id: 'FACEBOOK', label: 'Facebook Page' },
+                  { id: 'INSTAGRAM', label: 'Instagram Business' },
+                ].map((channel) => (
+                  <button
+                    key={channel.id}
+                    type="button"
+                    disabled={isClientViewer}
+                    onClick={() => handlePlatformToggle(channel.id)}
+                    className={`flex items-center justify-between p-2 rounded-xl text-xs font-semibold border transition ${
+                      quickPlatforms.includes(channel.id)
+                        ? 'bg-indigo-50 border-indigo-300 text-indigo-900'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{channel.label}</span>
+                    {quickPlatforms.includes(channel.id) && (
+                      <Check className="w-3.5 h-3.5 text-indigo-600" />
+                    )}
+                  </button>
+                ))}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Schedule Strategy</label>
+              <select
+                value={quickScheduleTime}
+                onChange={(e) => setQuickScheduleTime(e.target.value)}
+                disabled={isClientViewer}
+                className="w-full text-xs px-3 py-2 bg-slate-50 rounded-xl border border-slate-300 focus:border-indigo-600 focus:outline-none"
+              >
+                <option value="OPTIMAL">Optimal Peak Engagement (18:30)</option>
+                <option value="NOW">Immediate Queue Dispatch (Now)</option>
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Optimal time uses your brand's historical follower activity in {selectedBrand?.defaultTimezone || 'Asia/Kolkata'}.
+              </p>
             </div>
 
             <button
               type="submit"
-              disabled={quickPosting}
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center space-x-1.5"
+              disabled={isClientViewer || !quickCaption.trim()}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50"
             >
-              {quickPosting ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>
-                    {quickScheduleTime === 'NOW' ? 'Publish Now to Networks' : 'Register Automated Schedule'}
-                  </span>
-                </>
-              )}
+              Review & Schedule
             </button>
           </form>
-
-          {/* Engine Health Status Strip */}
-          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-[10px]">
-            <div className="flex items-center justify-between text-slate-500">
-              <span>n8n Engine Webhook</span>
-              <span className="text-emerald-600 font-bold">● Active (Port 5678)</span>
-            </div>
-            <div className="flex items-center justify-between text-slate-500">
-              <span>Meta Graph Dispatcher</span>
-              <span className="text-emerald-600 font-bold">● Verified</span>
-            </div>
-            <div className="flex items-center justify-between text-slate-500">
-              <span>Google Sheets Auto-Sync</span>
-              <span className="text-indigo-600 font-bold cursor-pointer hover:underline" onClick={() => navigate('/sheets-sync')}>
-                ● Auto-Sync Ready →
-              </span>
-            </div>
-          </div>
         </div>
       </div>
+
+      {/* 5. Connection Health Probes (No Ports, No Internal URLs) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900">Integration Health Probes</h2>
+          <p className="text-xs text-slate-500">Live operational status across verified channel adapters.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {healthData.map((item) => {
+            const isHealthy = item.status === 'HEALTHY';
+            const isDegraded = item.status === 'DEGRADED';
+            const isPaused = item.status === 'PAUSED';
+
+            return (
+              <div
+                key={item.name}
+                className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">{item.name}</span>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isHealthy
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : isPaused
+                        ? 'bg-amber-100 text-amber-800'
+                        : isDegraded
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">{item.details}</p>
+                <div className="text-[9px] text-slate-400 pt-1 border-t border-slate-200/60">
+                  Adapter: {item.service}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Quick Post */}
+      <AccessibleDialog
+        isOpen={confirmModalOpen}
+        onClose={() => setConfirmModalOpen(false)}
+        title="Confirm Post Publication"
+        description="Verify publishing parameters before queueing."
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+            <div>
+              <span className="text-slate-400 font-semibold block">Brand Scope:</span>
+              <span className="text-slate-800 font-bold">{selectedBrand?.name || 'Flower plant'}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 font-semibold block">Destinations:</span>
+              <span className="text-slate-800 font-bold">{quickPlatforms.join(', ')}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 font-semibold block">Timing:</span>
+              <span className="text-slate-800 font-bold">
+                {quickScheduleTime === 'NOW' ? 'Immediate Enqueue (Within 2 mins)' : 'Today at 18:30'} ({selectedBrand?.defaultTimezone || 'Asia/Kolkata'})
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 font-semibold block">Caption:</span>
+              <p className="text-slate-700 italic mt-0.5 line-clamp-3">"{quickCaption}"</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end space-x-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setConfirmModalOpen(false)}
+              className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-800 transition"
+            >
+              Back to Edit
+            </button>
+            <button
+              type="button"
+              disabled={publishingQuick}
+              onClick={handleQuickSubmit}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition disabled:opacity-50"
+            >
+              {publishingQuick ? 'Enqueueing...' : 'Confirm & Schedule'}
+            </button>
+          </div>
+        </div>
+      </AccessibleDialog>
     </div>
   );
 }

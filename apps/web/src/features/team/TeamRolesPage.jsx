@@ -239,7 +239,7 @@ export default function TeamRolesPage() {
   const handleSaveRoleDetails = (e) => {
     e.preventDefault();
     if (!roleEditForm.label) {
-      alert('Role label is required.');
+      setStatusMessage({ type: 'error', text: 'Role label is required.' });
       return;
     }
 
@@ -320,7 +320,7 @@ export default function TeamRolesPage() {
       });
       setTimeout(() => setStatusMessage(null), 3500);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update employee details');
+      setStatusMessage({ type: 'error', text: err.response?.data?.message || 'Failed to update employee details' });
     } finally {
       setSubmitting(false);
     }
@@ -352,10 +352,6 @@ export default function TeamRolesPage() {
 
   // Remove Employee
   const handleRemoveMember = async (targetUserId, memberName) => {
-    if (!window.confirm(`Are you sure you want to remove ${memberName} from this organization?`)) {
-      return;
-    }
-
     try {
       await apiClient.delete(`/organizations/members/${targetUserId}`);
       setMembers((prev) => prev.filter((m) => m.userId !== targetUserId && m.user?.id !== targetUserId));
@@ -376,7 +372,7 @@ export default function TeamRolesPage() {
   const handleAddEmployee = async (e) => {
     e.preventDefault();
     if (!addForm.email || !addForm.firstName) {
-      alert('Please fill out all required fields.');
+      setStatusMessage({ type: 'error', text: 'Please fill out all required fields.' });
       return;
     }
 
@@ -400,7 +396,7 @@ export default function TeamRolesPage() {
       });
       setTimeout(() => setStatusMessage(null), 4000);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to add employee');
+      setStatusMessage({ type: 'error', text: err.response?.data?.message || 'Failed to add employee' });
     } finally {
       setSubmitting(false);
     }

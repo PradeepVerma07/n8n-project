@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useBrand } from '../../context/BrandContext.jsx';
+import { useToast } from '../../components/Toast.jsx';
 import { apiClient } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
 import {
@@ -130,8 +131,11 @@ export default function SettingsPage() {
     }
   }, [activeTab]);
 
-  const showNotification = (msg) => {
+  const { addToast } = useToast();
+
+  const showNotification = (msg, isError = false) => {
     setSavedSuccess(msg);
+    addToast(msg, isError ? 'error' : 'success');
     setTimeout(() => setSavedSuccess(''), 3500);
   };
 
@@ -200,23 +204,21 @@ export default function SettingsPage() {
       }
       setIsBrandModalOpen(false);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save brand');
+      showNotification(err.response?.data?.message || 'Failed to save brand', true);
     }
   };
 
   // Delete Brand
   const handleDeleteBrand = async (brand) => {
     if (brands.length <= 1) {
-      alert('You must retain at least one active brand in your workspace.');
+      showNotification('You must retain at least one active brand in your workspace.', true);
       return;
     }
-    if (window.confirm(`Are you sure you want to delete brand "${brand.name}"? This cannot be undone.`)) {
-      try {
-        await deleteBrand(brand.id);
-        showNotification(`Brand "${brand.name}" deleted.`);
-      } catch (err) {
-        alert(err.response?.data?.message || 'Failed to delete brand');
-      }
+    try {
+      await deleteBrand(brand.id);
+      showNotification(`Brand "${brand.name}" removed from workspace.`);
+    } catch (err) {
+      showNotification(err.response?.data?.message || 'Failed to delete brand', true);
     }
   };
 
@@ -247,7 +249,7 @@ export default function SettingsPage() {
       setIsMetaModalOpen(false);
       await reloadBrands();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save Meta credentials');
+      showNotification(err.response?.data?.message || 'Failed to save Meta credentials', true);
     }
   };
 
@@ -267,7 +269,7 @@ export default function SettingsPage() {
       });
       await fetchMembers();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to add employee');
+      showNotification(err.response?.data?.message || 'Failed to add employee', true);
     }
   };
 
@@ -278,24 +280,22 @@ export default function SettingsPage() {
       showNotification('Employee role updated!');
       await fetchMembers();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update employee role');
+      showNotification(err.response?.data?.message || 'Failed to update employee role', true);
     }
   };
 
   // Remove Member
   const handleRemoveMember = async (member) => {
     if (member.userId === user?.id) {
-      alert('You cannot remove yourself from the organization.');
+      showNotification('You cannot remove yourself from the organization.', true);
       return;
     }
-    if (window.confirm(`Remove employee ${member.user?.firstName || member.user?.email} from organization?`)) {
-      try {
-        await apiClient.delete(`/organizations/members/${member.userId}`);
-        showNotification('Employee removed.');
-        await fetchMembers();
-      } catch (err) {
-        alert(err.response?.data?.message || 'Failed to remove employee');
-      }
+    try {
+      await apiClient.delete(`/organizations/members/${member.userId}`);
+      showNotification('Employee removed from organization.');
+      await fetchMembers();
+    } catch (err) {
+      showNotification(err.response?.data?.message || 'Failed to remove employee', true);
     }
   };
 

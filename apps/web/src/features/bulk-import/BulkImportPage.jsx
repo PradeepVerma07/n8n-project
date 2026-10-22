@@ -7,12 +7,14 @@ export default function BulkImportPage() {
   const [file, setFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
 
   const handleFileChange = (e) => {
     const selected = e.target.files?.[0];
     if (selected) {
       setFile(selected);
       setResult(null);
+      setError(null);
     }
   };
 
@@ -21,6 +23,7 @@ export default function BulkImportPage() {
 
     setImporting(true);
     setResult(null);
+    setError(null);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -31,7 +34,7 @@ export default function BulkImportPage() {
       });
       setResult(data.data);
     } catch (err) {
-      alert(err.response?.data?.message || 'Bulk import failed');
+      setError(err.response?.data?.message || 'Bulk import failed. Please verify your CSV columns.');
     } finally {
       setImporting(false);
     }
@@ -71,6 +74,13 @@ export default function BulkImportPage() {
           <span>Download Sample CSV</span>
         </button>
       </div>
+
+      {error && (
+        <div role="alert" className="p-4 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs flex items-center space-x-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+          <span className="font-medium">{error}</span>
+        </div>
+      )}
 
       {/* Upload Box */}
       <div

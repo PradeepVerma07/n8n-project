@@ -1,12 +1,38 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/client.js';
 
 const AuthContext = createContext(null);
+
+const POSTPILOT_KEYS = [
+  'postpilot_access_token',
+  'postpilot_refresh_token',
+  'postpilot_active_org_id',
+  'postpilot_session_expired',
+];
+
+/**
+ * Removes only PostPilot-owned localStorage keys to preserve unrelated tenant or browser state.
+ */
+export function clearPostPilotStorage() {
+  for (const key of POSTPILOT_KEYS) {
+    localStorage.removeItem(key);
+  }
+  // Remove brand keys
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('postpilot_')) {
+      keysToRemove.push(k);
+    }
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k));
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     async function loadUser() {
@@ -33,9 +59,10 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.warn('Session verification failed:', err.message);
-        localStorage.clear();
+        clearPostPilotStorage();
         setUser(null);
         setActiveOrg(null);
+        setSessionExpired(true);
       } finally {
         setLoading(false);
       }
@@ -44,12 +71,17 @@ export function AuthProvider({ children }) {
     loadUser();
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await apiClient.post('/auth/login', { email, password });
+  const login = async (email, password, rememberMe = true) => {
+    setSessionExpired(false);
+    // Normalize input
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const { data } = await apiClient.post('/auth/login', { email: normalizedEmail, password });
     const { user: userData, organizations, tokens } = data.data;
 
     localStorage.setItem('postpilot_access_token', tokens.accessToken);
-    localStorage.setItem('postpilot_refresh_token', tokens.refreshToken);
+    if (tokens.refreshToken) {
+      localStorage.setItem('postpilot_refresh_token', tokens.refreshToken);
+    }
 
     setUser(userData);
     if (organizations && organizations.length > 0) {
@@ -62,28 +94,35 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     const refreshToken = localStorage.getItem('postpilot_refresh_token');
     try {
-      await apiClient.post('/auth/logout', { refreshToken });
+      if (refreshToken) {
+        await apiClient.post('/auth/logout', { refreshToken });
+      }
     } catch {
       // Ignore network errors on logout
     } finally {
-      localStorage.clear();
+      clearPostPilotStorage();
       setUser(null);
       setActiveOrg(null);
+      setSessionExpired(false);
     }
   };
 
-  const switchOrganization = (org) => {
+  const switchOrganization = useCallback((org) => {
     setActiveOrg(org);
     localStorage.setItem('postpilot_active_org_id', org.orgId || org.id);
-    window.location.reload();
-  };
+  }, []);
+
+  const currentRole = activeOrg?.role || user?.memberships?.[0]?.role || 'CLIENT_VIEWER';
 
   return (
     <AuthContext.Provider
       value={{
         user,
         activeOrg,
+        currentRole,
         loading,
+        sessionExpired,
+        clearSessionExpired: () => setSessionExpired(false),
         login,
         logout,
         switchOrganization,

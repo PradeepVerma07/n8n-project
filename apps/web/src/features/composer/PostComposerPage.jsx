@@ -157,11 +157,11 @@ export default function PostComposerPage() {
   const handleSubmit = async (targetStatus) => {
     const targetBrandList = brands.filter((b) => selectedBrandIds.includes(b.id));
     if (targetBrandList.length === 0) {
-      alert('Please select at least one brand.');
+      setStatusMessage({ type: 'error', text: 'Please select at least one target brand.' });
       return;
     }
     if (selectedPlatforms.length === 0) {
-      alert('Please select at least one social media platform.');
+      setStatusMessage({ type: 'error', text: 'Please select at least one social media platform.' });
       return;
     }
 

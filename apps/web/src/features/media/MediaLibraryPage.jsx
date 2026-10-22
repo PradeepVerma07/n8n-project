@@ -117,10 +117,9 @@ export default function MediaLibraryPage() {
   };
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
     try {
       await apiClient.delete(`/media/${id}`);
-      showToast(`Deleted ${name}`);
+      showToast(`Removed "${name}" from media library.`);
       setMediaList((prev) => prev.filter((item) => item.id !== id));
     } catch (err) {
       showToast('Failed to delete media asset', true);

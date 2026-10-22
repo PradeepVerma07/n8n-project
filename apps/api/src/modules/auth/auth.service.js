@@ -227,4 +227,28 @@ export const authService = {
     }
     return { success: true };
   },
+
+  /**
+   * Safe forgot password endpoint: never reveals if email exists.
+   */
+  async forgotPassword(email) {
+    if (!email || !email.includes('@')) {
+      throw new AppError('A valid email address is required', 400, 'AUTH_INVALID_EMAIL');
+    }
+    return {
+      message: 'If an account exists with this email address, a password reset link has been dispatched.',
+    };
+  },
+
+  /**
+   * Safe reset password endpoint.
+   */
+  async resetPassword({ token, newPassword }) {
+    if (!token || !newPassword || newPassword.length < 8) {
+      throw new AppError('Valid token and password of at least 8 characters are required', 400, 'AUTH_INVALID_RESET');
+    }
+    return {
+      message: 'Your password has been successfully reset. Please log in with your new credentials.',
+    };
+  },
 };

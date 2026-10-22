@@ -19,6 +19,7 @@ import postsRoutes from './modules/posts/posts.routes.js';
 import publishRoutes from './modules/publish/publish.routes.js';
 import sheetsRoutes from './modules/sheets/sheets.routes.js';
 import reportsRoutes from './modules/reports/reports.routes.js';
+import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 
 const app = express();
 
@@ -81,6 +82,7 @@ app.use('/api/v1/posts', postsRoutes);
 app.use('/api/v1/publish', publishRoutes);
 app.use('/api/v1/sheets', sheetsRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
 
 // Catch 404
 app.use(notFoundHandler);
