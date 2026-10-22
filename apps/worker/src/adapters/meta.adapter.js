@@ -52,11 +52,19 @@ export class MetaAdapter extends PlatformAdapter {
       throw err;
     }
 
-    const accessToken = socialAccount
-      ? await tokenService.ensureActiveToken(socialAccount)
-      : process.env.META_ACCESS_TOKEN || 'mock_meta_token';
+    let accessToken = process.env.META_ACCESS_TOKEN || 'mock_meta_token';
+    if (socialAccount?.accessTokenEncrypted) {
+      try {
+        accessToken = await tokenService.ensureActiveToken(socialAccount);
+      } catch (e) {
+        accessToken = process.env.META_ACCESS_TOKEN || accessToken;
+      }
+    }
 
-    const accountId = socialAccount?.platformAccountId || process.env.META_PAGE_ID || 'me';
+    const defaultAccountId = this.platform === 'INSTAGRAM'
+      ? process.env.META_IG_ACCOUNT_ID
+      : process.env.META_PAGE_ID;
+    const accountId = socialAccount?.platformAccountId || defaultAccountId || 'me';
 
     if (this.platform === 'FACEBOOK') {
       return this.publishToFacebook(post, accountId, accessToken);
