@@ -22,7 +22,18 @@ export const metaPublisherService = {
     return { success: true, platform, simulated: true };
   },
 
+  async getPageAccessToken(pageId, token) {
+    try {
+      const res = await fetch(`${BASE_GRAPH_URL}/${pageId}?fields=access_token&access_token=${token}`);
+      const data = await res.json();
+      return data.access_token || token;
+    } catch {
+      return token;
+    }
+  },
+
   async publishToFacebook(pageId, accessToken, caption, mediaUrl) {
+    const pageToken = await this.getPageAccessToken(pageId, accessToken);
     const endpoint = `${BASE_GRAPH_URL}/${pageId}/photos`;
     try {
       const res = await fetch(endpoint, {
@@ -31,7 +42,7 @@ export const metaPublisherService = {
         body: JSON.stringify({
           url: mediaUrl,
           caption,
-          access_token: accessToken,
+          access_token: pageToken,
         }),
       });
       const data = await res.json();
